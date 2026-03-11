@@ -1,0 +1,531 @@
+{
+  "name": "Content Repurposing Pipeline (with Buffer)",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "7bd0c2c5-f185-45da-bb16-54e36410d736",
+        "formTitle": "Content Repurposing Pipeline",
+        "formDescription": "Paste your Google Doc content or original post to repurpose across LinkedIn, Twitter/X, and Email.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Content Title",
+              "placeholder": "e.g. 5 Lessons from Leading a Cross-Functional Team",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Original Content",
+              "fieldType": "textarea",
+              "placeholder": "Paste your full blog post, article, or Google Doc content here...",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Content Niche",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Project Management & Leadership"
+                  },
+                  {
+                    "option": "Tech & Automation"
+                  },
+                  {
+                    "option": "Business & Entrepreneurship"
+                  },
+                  {
+                    "option": "Career & Personal Development"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Target Audience",
+              "placeholder": "e.g. Mid-level PMs, startup founders, tech leads"
+            },
+            {
+              "fieldLabel": "Post to Social Media?",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Yes - schedule via Buffer"
+                  },
+                  {
+                    "option": "No - Slack drafts only"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c0758f7c-9a99-473a-9348-f210d28d3ac4",
+      "name": "Form Trigger - Input Content",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2,
+      "position": [
+        80,
+        1040
+      ],
+      "webhookId": "7bd0c2c5-f185-45da-bb16-54e36410d736",
+      "notes": "Added 'Post to Social Media?' field so you can choose per run whether to auto-schedule via Buffer or just get Slack drafts."
+    },
+    {
+      "parameters": {
+        "jsCode": "const form = $input.first().json;\n\nconst title = form['Content Title'] || 'Untitled';\nconst content = form['Original Content'] || '';\nconst niche = form['Content Niche'] || 'Project Management & Leadership';\nconst audience = form['Target Audience'] || 'professionals and leaders';\nconst postToBuffer = form['Post to Social Media?'] === 'Yes - schedule via Buffer';\n\nreturn [{\n  json: { title, content, niche, audience, postToBuffer }\n}];"
+      },
+      "id": "ee656fee-1c99-49f0-9eb7-c26781557f56",
+      "name": "Parse Form Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $credentials.httpHeaderAuth.value }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=",
+              "value": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4000, messages: [{ role: 'user', content: `You are an expert content strategist and social media copywriter specializing in ${$json.niche}.\n\nRepurpose the following content into multiple formats for the target audience: ${$json.audience}.\n\nOriginal Title: ${$json.title}\nNiche: ${$json.niche}\n\nOriginal Content:\n${$json.content}\n\nReturn ONLY valid JSON (no markdown, no preamble) in this exact structure:\n{\n  \"linkedin_posts\": [\n    {\n      \"hook\": \"Attention-grabbing opening line\",\n      \"body\": \"Full LinkedIn post body with line breaks using \\\\n. Include insights, storytelling, or lessons. 150-300 words. Use emojis sparingly.\",\n      \"cta\": \"Call to action question or statement\",\n      \"hashtags\": \"#ProjectManagement #Leadership #PM\"\n    },\n    {\n      \"hook\": \"Different angle hook\",\n      \"body\": \"Second LinkedIn post with different framing\",\n      \"cta\": \"Different call to action\",\n      \"hashtags\": \"#relevant #hashtags\"\n    },\n    {\n      \"hook\": \"Third unique hook\",\n      \"body\": \"Third LinkedIn post focusing on actionable takeaways\",\n      \"cta\": \"Engagement-driving CTA\",\n      \"hashtags\": \"#relevant #hashtags\"\n    }\n  ],\n  \"tweets\": [\n    \"Tweet 1 - punchy insight under 280 chars\",\n    \"Tweet 2 - contrarian take or hot take under 280 chars\",\n    \"Tweet 3 - actionable tip under 280 chars\",\n    \"Tweet 4 - stat or fact framing under 280 chars\",\n    \"Tweet 5 - storytelling hook under 280 chars\"\n  ],\n  \"email_newsletter\": {\n    \"subject_line\": \"Compelling email subject line\",\n    \"preview_text\": \"Email preview text (50 chars max)\",\n    \"intro\": \"1-2 sentence personal intro paragraph\",\n    \"body\": \"Main newsletter body. 200-350 words. Conversational tone. Break into 2-3 short paragraphs.\",\n    \"key_takeaways\": [\"Takeaway 1\", \"Takeaway 2\", \"Takeaway 3\"],\n    \"outro\": \"Warm sign-off paragraph\"\n  },\n  \"content_summary\": \"One sentence description of the core message\"\n}` }] }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2b8b240c-75ea-4857-8f74-f8a8aeb735d4",
+      "name": "Claude AI - Repurpose Content",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        512,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nconst text = response.content?.[0]?.text || '{}';\n\nlet parsed;\ntry {\n  const clean = text.replace(/```json|```/g, '').trim();\n  parsed = JSON.parse(clean);\n} catch(e) {\n  parsed = { error: 'Failed to parse AI response', raw: text };\n}\n\nconst formData = $('Parse Form Input').first().json;\n\nreturn [{\n  json: {\n    title: formData.title,\n    niche: formData.niche,\n    audience: formData.audience,\n    postToBuffer: formData.postToBuffer,\n    linkedin_posts: parsed.linkedin_posts || [],\n    tweets: parsed.tweets || [],\n    email_newsletter: parsed.email_newsletter || {},\n    content_summary: parsed.content_summary || ''\n  }\n}];"
+      },
+      "id": "33ede990-db55-4537-93c6-12022f07ddac",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        736,
+        1040
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "buffer-check",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "leftValue": "={{ $json.postToBuffer }}",
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "90c1f926-96ed-4fc4-9bfc-6f8672a0ad2e",
+      "name": "Post to Buffer?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        960,
+        1040
+      ],
+      "notes": "Routes to Buffer if user selected 'Yes - schedule via Buffer'. Otherwise goes straight to Slack drafts only."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare LinkedIn posts for Buffer — one item per post\nconst d = $input.first().json;\nconst posts = d.linkedin_posts || [];\n\nreturn posts.map((post, i) => ({\n  json: {\n    ...d,\n    bufferText: `${post.hook}\\n\\n${post.body}\\n\\n${post.cta}\\n\\n${post.hashtags}`,\n    postIndex: i + 1,\n    platform: 'linkedin'\n  }\n}));"
+      },
+      "id": "e8e46efd-2c3c-49dc-a2a0-984c4fdc9efd",
+      "name": "Prepare LinkedIn Posts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        896
+      ],
+      "notes": "Formats each LinkedIn post as a single text block ready for Buffer API."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.bufferapp.com/1/updates/create.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer YOUR_BUFFER_ACCESS_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.bufferText, profile_ids: ['YOUR_BUFFER_LINKEDIN_PROFILE_ID'], scheduled_at: new Date(Date.now() + ($json.postIndex * 2 * 24 * 60 * 60 * 1000)).toISOString() }) }}",
+        "options": {}
+      },
+      "id": "d80a7c51-0c45-4665-b811-e28776d41c69",
+      "name": "Schedule LinkedIn via Buffer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1392,
+        896
+      ],
+      "notes": "SETUP: 1) Go to buffer.com → sign up free → connect LinkedIn. 2) Go to buffer.com/developers → get your Access Token. 3) Replace YOUR_BUFFER_ACCESS_TOKEN with your token. 4) Replace YOUR_BUFFER_LINKEDIN_PROFILE_ID with your LinkedIn profile ID from Buffer API (GET https://api.bufferapp.com/1/profiles.json). Posts are spaced 2 days apart automatically."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare tweets for Buffer — one item per tweet\nconst d = $input.first().json;\nconst tweets = d.tweets || [];\n\nreturn tweets.map((tweet, i) => ({\n  json: {\n    ...d,\n    bufferText: tweet,\n    tweetIndex: i + 1,\n    platform: 'twitter'\n  }\n}));"
+      },
+      "id": "0d19e1fd-d5fc-4be5-84b2-f411e3e7afca",
+      "name": "Prepare Tweets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        1056
+      ],
+      "notes": "Formats each tweet ready for Buffer API."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.bufferapp.com/1/updates/create.json",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer YOUR_BUFFER_ACCESS_TOKEN"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ text: $json.bufferText, profile_ids: ['YOUR_BUFFER_TWITTER_PROFILE_ID'], scheduled_at: new Date(Date.now() + ($json.tweetIndex * 1 * 24 * 60 * 60 * 1000)).toISOString() }) }}",
+        "options": {}
+      },
+      "id": "1ccd4dac-6acf-4e89-9fef-6902dbb72be3",
+      "name": "Schedule Tweets via Buffer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1392,
+        1056
+      ],
+      "notes": "SETUP: 1) Connect Twitter/X in buffer.com. 2) Replace YOUR_BUFFER_ACCESS_TOKEN with your Buffer token. 3) Replace YOUR_BUFFER_TWITTER_PROFILE_ID with your Twitter profile ID from Buffer API. Tweets are spaced 1 day apart automatically."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build full Slack draft message with all repurposed content\nconst d = $input.first().json;\n\nconst li = d.linkedin_posts || [];\nconst tweets = d.tweets || [];\nconst email = d.email_newsletter || {};\nconst buffered = d.postToBuffer;\n\nconst linkedinSection = li.map((post, i) => {\n  return `*LinkedIn Post ${i+1}*\\n${post.hook}\\n\\n${post.body}\\n\\n${post.cta}\\n${post.hashtags}`;\n}).join('\\n\\n---\\n\\n');\n\nconst tweetSection = tweets.map((t, i) => `${i+1}. ${t}`).join('\\n');\n\nconst emailSection = `*Subject:* ${email.subject_line}\\n*Preview:* ${email.preview_text}\\n\\n${email.intro}\\n\\n${email.body}\\n\\n*Key Takeaways:*\\n${(email.key_takeaways || []).map((t, i) => `${i+1}. ${t}`).join('\\n')}\\n\\n${email.outro}`;\n\nconst bufferStatus = buffered\n  ? ':white_check_mark: *Posts scheduled in Buffer — LinkedIn (3 posts, 2 days apart) + Twitter/X (5 tweets, 1 day apart)*'\n  : ':pencil: *Draft only — not scheduled. Re-run and select Buffer to auto-post.*';\n\nconst slackMessage = `:rocket: *Content Repurposing Pipeline*\\n*\"${d.title}\"*\\n_${d.content_summary}_\\n\\n${bufferStatus}\\n\\n${'='.repeat(40)}\\n\\n:linkedin: *3 LINKEDIN POSTS*\\n\\n${linkedinSection}\\n\\n${'='.repeat(40)}\\n\\n:bird: *5 TWEETS/X POSTS*\\n\\n${tweetSection}\\n\\n${'='.repeat(40)}\\n\\n:email: *EMAIL NEWSLETTER*\\n\\n${emailSection}\\n\\n---\\n_Generated by Content Repurposing Pipeline_`;\n\nreturn [{\n  json: {\n    ...d,\n    slackMessage\n  }\n}];"
+      },
+      "id": "b3694c7a-be60-40ad-87cc-3e68b5fa7f64",
+      "name": "Build Slack Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1168,
+        1248
+      ]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "text": "={{ $json.slackMessage }}",
+        "otherOptions": {}
+      },
+      "id": "ee7629dc-fa08-4ea0-95f4-5af5deb51b6a",
+      "name": "Send to Slack",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        1248
+      ],
+      "webhookId": "350c93e7-7735-4234-b91b-ff8e06aa6b19",
+      "notes": "SETUP: Connect your Slack OAuth2 credential. Replace YOUR_SLACK_CHANNEL_ID with your channel ID."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build Google Drive document content\nconst d = $input.first().json;\nconst li = d.linkedin_posts || [];\nconst tweets = d.tweets || [];\nconst email = d.email_newsletter || {};\nconst date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });\n\nconst linkedinSection = li.map((post, i) =>\n  `LinkedIn Post ${i+1}\\n${'─'.repeat(30)}\\nHook: ${post.hook}\\n\\n${post.body}\\n\\nCTA: ${post.cta}\\nHashtags: ${post.hashtags}`\n).join('\\n\\n');\n\nconst tweetSection = tweets.map((t, i) => `${i+1}. ${t}`).join('\\n\\n');\n\nconst emailSection = `Subject Line: ${email.subject_line}\\nPreview Text: ${email.preview_text}\\n\\nIntro:\\n${email.intro}\\n\\nBody:\\n${email.body}\\n\\nKey Takeaways:\\n${(email.key_takeaways || []).map((t, i) => `${i+1}. ${t}`).join('\\n')}\\n\\nOutro:\\n${email.outro}`;\n\nconst docContent = `CONTENT REPURPOSING REPORT\\n${'='.repeat(50)}\\n\\nTitle: ${d.title}\\nNiche: ${d.niche}\\nAudience: ${d.audience}\\nDate: ${date}\\nBuffer Scheduled: ${d.postToBuffer ? 'Yes' : 'No'}\\nSummary: ${d.content_summary}\\n\\n${'─'.repeat(50)}\\nLINKEDIN POSTS (3)\\n${'─'.repeat(50)}\\n\\n${linkedinSection}\\n\\n${'─'.repeat(50)}\\nTWEETS / X POSTS (5)\\n${'─'.repeat(50)}\\n\\n${tweetSection}\\n\\n${'─'.repeat(50)}\\nEMAIL NEWSLETTER\\n${'─'.repeat(50)}\\n\\n${emailSection}\\n\\n---\\nGenerated by Content Repurposing Pipeline | ${new Date().toISOString()}`;\n\nreturn [{\n  json: {\n    ...d,\n    docContent,\n    fileName: `Content Repurpose - ${d.title} - ${date}.txt`\n  }\n}];"
+      },
+      "id": "afc00cb3-b425-4448-99d5-57fc40f53561",
+      "name": "Build Drive Document",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        1408
+      ]
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.fileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "id": "90e42c3e-8945-4cd7-9578-46061e3c3d72",
+      "name": "Save to Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1616,
+        1408
+      ],
+      "notes": "SETUP: Use same Google Drive credential. Replace YOUR_GOOGLE_DRIVE_FOLDER_ID with your content folder ID."
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $('Parse AI Response').first().json;\n\nreturn [{\n  json: {\n    status: 'success',\n    title: data.title,\n    linkedin_posts_count: 3,\n    tweets_count: 5,\n    email_generated: true,\n    buffer_scheduled: data.postToBuffer,\n    slack_sent: true,\n    drive_saved: true\n  }\n}];"
+      },
+      "id": "0d05cfc6-bce6-4e1b-a174-26fa812e3a1c",
+      "name": "Pipeline Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        1136
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Form Trigger - Input Content": {
+      "main": [
+        [
+          {
+            "node": "Parse Form Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Form Input": {
+      "main": [
+        [
+          {
+            "node": "Claude AI - Repurpose Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude AI - Repurpose Content": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Post to Buffer?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Post to Buffer?": {
+      "main": [
+        [
+          {
+            "node": "Prepare LinkedIn Posts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Tweets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare LinkedIn Posts": {
+      "main": [
+        [
+          {
+            "node": "Schedule LinkedIn via Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Tweets": {
+      "main": [
+        [
+          {
+            "node": "Schedule Tweets via Buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule LinkedIn via Buffer": {
+      "main": [
+        [
+          {
+            "node": "Build Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Tweets via Buffer": {
+      "main": [
+        [
+          {
+            "node": "Build Slack Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Slack Message": {
+      "main": [
+        [
+          {
+            "node": "Send to Slack",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Drive Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Slack": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Drive Document": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "31ee20bb-c060-4a0b-8d5b-475420746958",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6995df2b3804ffa07cb9cfe592284ad20d1af53c27b95c32cc2f2d590814fec9"
+  },
+  "id": "3b6ISYnGgGg_QOXrnmgNN",
+  "tags": []
+}
