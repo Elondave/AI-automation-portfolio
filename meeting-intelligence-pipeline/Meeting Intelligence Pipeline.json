@@ -1,0 +1,302 @@
+{
+  "name": "Meeting Intelligence Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "fireflies-webhook",
+        "options": {}
+      },
+      "id": "c188c123-8c88-41ee-926d-ef4b78d5f1c0",
+      "name": "Webhook - Fireflies Meeting Ended",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1104,
+        112
+      ],
+      "webhookId": "12d961e4-586b-4614-a542-ff1b64f487ac",
+      "notes": "SETUP: In Fireflies.ai → Settings → Webhooks → Add webhook URL → select 'Transcription complete' event. Your webhook URL will be shown after importing this workflow."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract key fields from Fireflies webhook payload\nconst body = $input.first().json.body || $input.first().json;\n\nconst meetingTitle = body.title || body.meeting_title || 'Untitled Meeting';\nconst transcript = body.transcript || body.summary?.overview || body.sentences?.map(s => `${s.speaker_name}: ${s.text}`).join('\\n') || '';\nconst meetingDate = body.date || new Date().toISOString();\nconst attendees = body.attendees || body.participants || [];\nconst meetingId = body.id || body.meetingId || Date.now().toString();\nconst duration = body.duration || 'Unknown';\n\n// Format attendee list\nconst attendeeList = Array.isArray(attendees) \n  ? attendees.map(a => a.displayName || a.name || a.email || a).join(', ')\n  : String(attendees);\n\nreturn [{\n  json: {\n    meetingTitle,\n    transcript,\n    meetingDate,\n    attendeeList,\n    meetingId,\n    duration,\n    rawBody: body\n  }\n}];"
+      },
+      "id": "7505602a-cb36-4d77-a264-f6b0fcdfa52d",
+      "name": "Parse Fireflies Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $credentials.httpHeaderAuth.value }}"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "=",
+              "value": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2000, messages: [{ role: 'user', content: `You are a meeting intelligence assistant. Analyze this meeting transcript and return ONLY valid JSON (no markdown, no preamble).\n\nMeeting: ${$json.meetingTitle}\nDate: ${$json.meetingDate}\nAttendees: ${$json.attendeeList}\n\nTranscript:\n${$json.transcript}\n\nReturn this exact JSON structure:\n{\n  \"summary\": \"2-3 sentence executive summary of the meeting\",\n  \"key_decisions\": [\"decision 1\", \"decision 2\"],\n  \"action_items\": [\n    {\n      \"task\": \"Clear description of what needs to be done\",\n      \"owner\": \"Person responsible (or 'Unassigned')\",\n      \"due_date\": \"Due date if mentioned, or 'TBD'\",\n      \"priority\": \"High/Medium/Low\"\n    }\n  ],\n  \"blockers\": [\"any blockers or risks mentioned\"],\n  \"next_meeting_topics\": [\"topics to cover next time\"]\n}` }] }) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "02b919f5-8e29-4d61-9bca-3465b96f5dc5",
+      "name": "Claude AI - Extract Action Items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        -656,
+        112
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "B0511gASSmx6Y51x",
+          "name": "Header Auth account"
+        }
+      },
+      "notes": "SETUP: Create an HTTP Header Auth credential named 'Anthropic API' with your Anthropic API key as the value."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude's JSON response\nconst claudeResponse = $input.first().json;\nconst content = claudeResponse.content?.[0]?.text || '{}';\n\nlet parsed;\ntry {\n  // Strip any accidental markdown fences\n  const clean = content.replace(/```json|```/g, '').trim();\n  parsed = JSON.parse(clean);\n} catch(e) {\n  parsed = {\n    summary: 'Could not parse AI response',\n    key_decisions: [],\n    action_items: [],\n    blockers: [],\n    next_meeting_topics: []\n  };\n}\n\n// Merge with meeting metadata from previous node\nconst prevData = $('Parse Fireflies Payload').first().json;\n\nreturn [{\n  json: {\n    ...prevData,\n    aiAnalysis: parsed,\n    summary: parsed.summary,\n    action_items: parsed.action_items || [],\n    key_decisions: parsed.key_decisions || [],\n    blockers: parsed.blockers || [],\n    next_meeting_topics: parsed.next_meeting_topics || []\n  }\n}];"
+      },
+      "id": "901da19c-5418-4628-9aa8-90f22c593d06",
+      "name": "Parse AI Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split action items into individual items for Trello card creation\nconst data = $input.first().json;\nconst actionItems = data.action_items || [];\n\nif (actionItems.length === 0) {\n  return [{ json: { ...data, task: 'Review meeting notes', owner: 'Unassigned', due_date: 'TBD', priority: 'Low', noActionItems: true } }];\n}\n\nreturn actionItems.map(item => ({\n  json: {\n    meetingTitle: data.meetingTitle,\n    meetingDate: data.meetingDate,\n    meetingId: data.meetingId,\n    summary: data.summary,\n    task: item.task,\n    owner: item.owner,\n    due_date: item.due_date,\n    priority: item.priority,\n    allData: data\n  }\n}));"
+      },
+      "id": "81717854-32e7-4480-a661-e5d2aaf77ecb",
+      "name": "Split Action Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "listId": "[69a947712d205aef5befe4f5]",
+        "name": "={{ $json.task }}",
+        "description": "=**Meeting:** {{ $json.meetingTitle }}\n**Date:** {{ $json.meetingDate }}\n**Owner:** {{ $json.owner }}\n**Due:** {{ $json.due_date }}\n**Priority:** {{ $json.priority }}\n\n---\n*Created automatically by Meeting Intelligence Pipeline*",
+        "additionalFields": {}
+      },
+      "id": "e3879e0e-3f35-459d-9d4f-5892e9df94ca",
+      "name": "Create Trello Cards",
+      "type": "n8n-nodes-base.trello",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "trelloApi": {
+          "id": "D4EnCPCW3MxobagF",
+          "name": "Trello account"
+        }
+      },
+      "notes": "SETUP: 1) Connect your Trello account in credentials. 2) Replace YOUR_TRELLO_LIST_ID with the ID of your target list (e.g., 'Action Items' list). Find list ID by opening a Trello card URL."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build the Google Drive document content\nconst data = $('Parse AI Response').first().json;\nconst date = new Date(data.meetingDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });\n\nconst actionItemsText = (data.action_items || []).map((item, i) => \n  `${i+1}. ${item.task}\\n   Owner: ${item.owner} | Due: ${item.due_date} | Priority: ${item.priority}`\n).join('\\n\\n');\n\nconst decisionsText = (data.key_decisions || []).map((d, i) => `${i+1}. ${d}`).join('\\n');\nconst blockersText = (data.blockers || []).map((b, i) => `${i+1}. ${b}`).join('\\n') || 'None identified';\nconst nextTopicsText = (data.next_meeting_topics || []).map((t, i) => `${i+1}. ${t}`).join('\\n') || 'TBD';\n\nconst docContent = `MEETING INTELLIGENCE REPORT\n${'='.repeat(50)}\n\nMeeting: ${data.meetingTitle}\nDate: ${date}\nAttendees: ${data.attendeeList}\nDuration: ${data.duration}\n\n${'─'.repeat(50)}\nEXECUTIVE SUMMARY\n${'─'.repeat(50)}\n${data.summary}\n\n${'─'.repeat(50)}\nKEY DECISIONS\n${'─'.repeat(50)}\n${decisionsText || 'None recorded'}\n\n${'─'.repeat(50)}\nACTION ITEMS (${(data.action_items || []).length} total)\n${'─'.repeat(50)}\n${actionItemsText || 'No action items identified'}\n\n${'─'.repeat(50)}\nBLOCKERS & RISKS\n${'─'.repeat(50)}\n${blockersText}\n\n${'─'.repeat(50)}\nNEXT MEETING TOPICS\n${'─'.repeat(50)}\n${nextTopicsText}\n\n${'─'.repeat(50)}\nFULL TRANSCRIPT\n${'─'.repeat(50)}\n${data.transcript}\n\n---\nGenerated by Meeting Intelligence Pipeline | ${new Date().toISOString()}`;\n\nreturn [{\n  json: {\n    ...data,\n    docContent,\n    fileName: `Meeting Notes - ${data.meetingTitle} - ${new Date(data.meetingDate).toLocaleDateString('en-US')}.txt`\n  }\n}];"
+      },
+      "id": "ce6c9051-4779-47c4-902f-236e697e0185",
+      "name": "Build Document Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "docContent",
+        "name": "={{ $json.fileName }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      },
+      "id": "58571f38-9133-410c-82fb-6f638e21019c",
+      "name": "Save to Google Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        224,
+        208
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "KEUqGm6baDg7Yx7p",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "SETUP: 1) Connect your Google account in credentials. 2) Replace YOUR_GOOGLE_DRIVE_FOLDER_ID with the folder ID from your Google Drive URL (the long string after /folders/ in the URL). 3) 'Convert to Google Document' is enabled so it becomes a native Google Doc."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Final summary node - log what was created\nconst trelloResults = $('Create Trello Cards').all();\nconst driveResult = $('Save to Google Drive').first().json;\nconst meetingData = $('Parse AI Response').first().json;\n\nconst cardCount = trelloResults.length;\nconst driveLink = driveResult?.webViewLink || driveResult?.id || 'Check Google Drive';\n\nconsole.log(`✅ Meeting Intelligence Pipeline Complete`);\nconsole.log(`📋 Meeting: ${meetingData.meetingTitle}`);\nconsole.log(`✅ Created ${cardCount} Trello cards`);\nconsole.log(`📄 Google Drive doc saved`);\n\nreturn [{\n  json: {\n    status: 'success',\n    meeting: meetingData.meetingTitle,\n    trelloCardsCreated: cardCount,\n    googleDriveLink: driveLink,\n    actionItems: meetingData.action_items,\n    summary: meetingData.summary\n  }\n}];"
+      },
+      "id": "e6a82cee-4cf1-48ee-be09-66484caeb062",
+      "name": "Pipeline Complete",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        112
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Fireflies Meeting Ended": {
+      "main": [
+        [
+          {
+            "node": "Parse Fireflies Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Fireflies Payload": {
+      "main": [
+        [
+          {
+            "node": "Claude AI - Extract Action Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude AI - Extract Action Items": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Response": {
+      "main": [
+        [
+          {
+            "node": "Split Action Items",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Build Document Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Action Items": {
+      "main": [
+        [
+          {
+            "node": "Create Trello Cards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Document Content": {
+      "main": [
+        [
+          {
+            "node": "Save to Google Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Trello Cards": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Google Drive": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "22405e6c-1fee-4168-a1ca-878fa6e4234d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6995df2b3804ffa07cb9cfe592284ad20d1af53c27b95c32cc2f2d590814fec9"
+  },
+  "id": "0phs6l4kljAiC3Ka0mC1Z",
+  "tags": []
+}
