@@ -1,0 +1,304 @@
+{
+  "name": "AI Sprint Planner — Jira",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "AI Sprint Planner",
+        "formDescription": "Paste your product requirement and we'll create Jira tickets automatically.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Project Name",
+              "fieldType": "text",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Jira Project Key",
+              "fieldType": "text",
+              "placeholder": "e.g. SP",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Requirement",
+              "fieldType": "textarea",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-form-trigger",
+      "name": "Sprint Planner Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [0, 300],
+      "webhookId": "sprint-planner-webhook"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "YOUR_ANTHROPIC_API_KEY"
+            },
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"model\": \"claude-sonnet-4-20250514\",\n  \"max_tokens\": 1000,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"You are a senior project manager. Break down the following product requirement into a structured sprint plan.\\n\\nRequirement: {{ $json['Requirement'] }}\\nProject Name: {{ $json['Project Name'] }}\\n\\nReturn ONLY a valid JSON array. No explanation, no markdown, no backticks. Use this exact structure:\\n[\\n  {\\n    \\\"epic\\\": \\\"Epic Title\\\",\\n    \\\"stories\\\": [\\n      {\\n        \\\"title\\\": \\\"Story Title\\\",\\n        \\\"description\\\": \\\"Brief description of the story\\\",\\n        \\\"subtasks\\\": [\\\"Subtask 1\\\", \\\"Subtask 2\\\", \\\"Subtask 3\\\"]\\n      }\\n    ]\\n  }\\n]\\n\\nRules:\\n- Maximum 3 epics\\n- Maximum 3 stories per epic\\n- Maximum 4 subtasks per story\\n- Keep titles concise and action-oriented\\n- Descriptions should be 1-2 sentences\"\n    }\n  ]\n}"
+      },
+      "id": "node-claude-api",
+      "name": "Call Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude's response and prepare epics for looping\nconst raw = $input.first().json.content[0].text;\nconst epics = JSON.parse(raw);\n\n// Store project key from form for downstream nodes\nconst projectKey = $('Sprint Planner Form').first().json['Jira Project Key'];\n\nreturn epics.map(epic => ({\n  json: {\n    ...epic,\n    projectKey\n  }\n}));"
+      },
+      "id": "node-parse-claude",
+      "name": "Parse Claude Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_DOMAIN.atlassian.net/rest/api/3/issue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"fields\": {\n    \"project\": {\n      \"key\": \"{{ $json.projectKey }}\"\n    },\n    \"summary\": \"{{ $json.epic }}\",\n    \"issuetype\": {\n      \"name\": \"Epic\"\n    },\n    \"customfield_10011\": \"{{ $json.epic }}\"\n  }\n}"
+      },
+      "id": "node-create-epic",
+      "name": "Create Epic in Jira",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [720, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge epic key from Jira response with stories from Claude\nconst epicKey = $input.first().json.key;\nconst projectKey = $('Parse Claude Response').first().json.projectKey;\n\n// Get the matching epic's stories\nconst allEpics = $('Parse Claude Response').all();\nconst currentIndex = $runIndex;\nconst currentEpic = allEpics[currentIndex]?.json;\n\nif (!currentEpic || !currentEpic.stories) return [];\n\nreturn currentEpic.stories.map(story => ({\n  json: {\n    ...story,\n    epicKey,\n    projectKey\n  }\n}));"
+      },
+      "id": "node-prepare-stories",
+      "name": "Prepare Stories",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_DOMAIN.atlassian.net/rest/api/3/issue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"fields\": {\n    \"project\": {\n      \"key\": \"{{ $json.projectKey }}\"\n    },\n    \"summary\": \"{{ $json.title }}\",\n    \"description\": {\n      \"type\": \"doc\",\n      \"version\": 1,\n      \"content\": [\n        {\n          \"type\": \"paragraph\",\n          \"content\": [\n            {\n              \"type\": \"text\",\n              \"text\": \"{{ $json.description }}\"\n            }\n          ]\n        }\n      ]\n    },\n    \"issuetype\": {\n      \"name\": \"Story\"\n    },\n    \"customfield_10014\": \"{{ $json.epicKey }}\"\n  }\n}"
+      },
+      "id": "node-create-story",
+      "name": "Create Story in Jira",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Merge story key from Jira response with subtasks\nconst storyKey = $input.first().json.key;\nconst projectKey = $('Prepare Stories').first().json.projectKey;\nconst subtasks = $('Prepare Stories').first().json.subtasks || [];\n\nreturn subtasks.map(subtask => ({\n  json: {\n    subtask,\n    storyKey,\n    projectKey\n  }\n}));"
+      },
+      "id": "node-prepare-subtasks",
+      "name": "Prepare Subtasks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://YOUR_DOMAIN.atlassian.net/rest/api/3/issue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "bodyContentType": "json",
+        "jsonBody": "={\n  \"fields\": {\n    \"project\": {\n      \"key\": \"{{ $json.projectKey }}\"\n    },\n    \"summary\": \"{{ $json.subtask }}\",\n    \"issuetype\": {\n      \"name\": \"Subtask\"\n    },\n    \"parent\": {\n      \"key\": \"{{ $json.storyKey }}\"\n    }\n  }\n}"
+      },
+      "id": "node-create-subtask",
+      "name": "Create Subtask in Jira",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a summary of everything created\nconst subtasks = $input.all();\nreturn [{\n  json: {\n    message: `✅ Sprint plan created successfully! Subtasks created: ${subtasks.length}`,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "node-summary",
+      "name": "Build Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1920, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=✅ Sprint plan created in Jira!\n\nYour epics, stories, and subtasks have been created successfully.\n\nHead to your Jira board to see the tickets.\n\nTimestamp: {{ $json.timestamp }}"
+      },
+      "id": "node-form-response",
+      "name": "Form Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2160, 300]
+    }
+  ],
+  "connections": {
+    "Sprint Planner Form": {
+      "main": [
+        [
+          {
+            "node": "Call Claude API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Claude API": {
+      "main": [
+        [
+          {
+            "node": "Parse Claude Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Response": {
+      "main": [
+        [
+          {
+            "node": "Create Epic in Jira",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Epic in Jira": {
+      "main": [
+        [
+          {
+            "node": "Prepare Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Stories": {
+      "main": [
+        [
+          {
+            "node": "Create Story in Jira",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Story in Jira": {
+      "main": [
+        [
+          {
+            "node": "Prepare Subtasks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Subtasks": {
+      "main": [
+        [
+          {
+            "node": "Create Subtask in Jira",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Subtask in Jira": {
+      "main": [
+        [
+          {
+            "node": "Build Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Summary": {
+      "main": [
+        [
+          {
+            "node": "Form Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "pinData": {}
+}
