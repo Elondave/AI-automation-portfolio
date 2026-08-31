@@ -19,7 +19,7 @@
         0,
         0
       ],
-      "notes": "This makes the workflow callable from the WhatsApp bot via an 'Execute Sub-workflow' node, passing the customer's message as 'query'."
+      "notes": "This makes the workflow callable from the Telegram bot via an 'Execute Sub-workflow' node, passing the customer's message as 'query'."
     },
     {
       "parameters": {
