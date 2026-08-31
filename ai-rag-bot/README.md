@@ -42,10 +42,10 @@ Both flows read/write the same Supabase `documents` table, so updating the knowl
 
 | File | Purpose |
 |---|---|
-| `supabase-setup.sql` | One-time Supabase setup — enables pgvector, creates the `documents` table and the `match_documents()` search function. Customizable per client (see comment in file). |
-| `rag-01-ingest.json` | n8n workflow — chunks and embeds knowledge base content, stores it in Supabase |
-| `rag-02-retrieve.json` | n8n workflow (sub-workflow) — embeds a query and retrieves the most relevant stored content |
-| `telegram-ai-support.json` | n8n workflow — the live Telegram bot: receives messages, calls the retrieval sub-workflow, generates a reply via Claude, sends it back |
+| [`supabase-setup.sql`](./supabase-setup.sql) | One-time Supabase setup — enables pgvector, creates the `documents` table and the `match_documents()` search function. Customizable per client (see comment in file). |
+| [`RAG - Ingest Knowledge Base.json`](./RAG%20-%20Ingest%20Knowledge%20Base.json) | n8n workflow — chunks and embeds knowledge base content, stores it in Supabase |
+| [`RAG - Retrieve Context.json`](./RAG%20-%20Retrieve%20Context.json) | n8n workflow (sub-workflow) — embeds a query and retrieves the most relevant stored content |
+| [`Telegram AI Support Bot (Claude + RAG + CRM).json`](./Telegram%20AI%20Support%20Bot%20%28Claude%20%2B%20RAG%20%2B%20CRM%29.json) | n8n workflow — the live Telegram bot: receives messages, calls the retrieval sub-workflow, generates a reply via Claude, sends it back |
 
 ## Setup
 
