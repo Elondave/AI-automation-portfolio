@@ -12,7 +12,7 @@ A collection of production-ready automation pipelines built with AI integration,
 | [Meeting Intelligence Pipeline](./meeting-intelligence-pipeline/) | Fireflies.ai Webhook | Claude AI, Trello, Google Drive | ✅ Built |
 | [Content Repurposing Pipeline](./content-repurposing-pipeline/) | n8n Form | Claude AI, Buffer, Slack, Google Drive | ✅ Built |
 | [Agentic Personal Assistant](./agentic-personal-assistant/) | Telegram | OpenRouter (Llama 3.1), Gmail, Google Calendar, Google Tasks | ✅ Active |
-| [RAG AI Support Assistant](./ai-rag-bot/) | Telegram | Claude AI, Voyage AI, Supabase (pgvector) | ✅ Built |
+| [Retrieval Augmented Generation (R.A.G)](./ai-rag-bot/) | Telegram | Claude AI, Voyage AI, Supabase (pgvector) | ✅ Built |
 
 ---
 
