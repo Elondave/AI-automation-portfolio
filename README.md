@@ -1,6 +1,7 @@
-# n8n Automation Portfolio
+# AI Automation Portfolio
 
-A collection of production-ready automation pipelines built with n8n (self-hosted), Claude AI, and third-party integrations. Each workflow solves a real business problem — turning manual, repetitive work into automated, intelligent processes.
+
+A collection of production-ready automation pipelines built with AI integration, self-hosted orchestration, and third-party services. Each workflow solves a real business problem, turning manual, repetitive work into automated, intelligent processes.
 
 ---
 
@@ -11,6 +12,7 @@ A collection of production-ready automation pipelines built with n8n (self-hoste
 | [Meeting Intelligence Pipeline](./meeting-intelligence-pipeline/) | Fireflies.ai Webhook | Claude AI, Trello, Google Drive | ✅ Built |
 | [Content Repurposing Pipeline](./content-repurposing-pipeline/) | n8n Form | Claude AI, Buffer, Slack, Google Drive | ✅ Built |
 | [Agentic Personal Assistant](./agentic-personal-assistant/) | Telegram | OpenRouter (Llama 3.1), Gmail, Google Calendar, Google Tasks | ✅ Active |
+| [RAG AI Support Assistant](./ai-rag-bot/) | Telegram | Claude AI, Voyage AI, Supabase (pgvector) | ✅ Built |
 
 ---
 
@@ -18,6 +20,7 @@ A collection of production-ready automation pipelines built with n8n (self-hoste
 
 - **Automation:** n8n (self-hosted)
 - **AI Models:** Claude (Anthropic API), Llama 3.1 via OpenRouter, Whisper (OpenAI)
+- **Retrieval & Knowledge Bases:** Voyage AI (embeddings), Supabase/pgvector (vector search)
 - **Productivity:** Google Drive, Gmail, Google Calendar, Google Tasks, Trello
 - **Communication:** Slack, Telegram, Buffer
 - **Languages:** JavaScript (n8n Code nodes)
@@ -26,4 +29,4 @@ A collection of production-ready automation pipelines built with n8n (self-hoste
 
 ## About
 
-Built to demonstrate practical automation skills applied to real productivity and content workflows. Focus areas: AI integration, multi-step orchestration, and business process automation.
+Built to demonstrate practical AI automation skills applied to real productivity, support, and content workflows. Focus areas: AI integration, workflow automation, retrieval-augmented generation (RAG), multi-step orchestration, and business process automation.
