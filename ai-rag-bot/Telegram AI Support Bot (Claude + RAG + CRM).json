@@ -1,0 +1,325 @@
+{
+  "name": "Telegram AI Support Bot (Claude + RAG + CRM)",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "ded3f456-87e5-41bc-bb9f-5439df817d43",
+      "name": "1. Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1536,
+        112
+      ],
+      "webhookId": "telegram-inbound",
+      "credentials": {
+        "telegramApi": {
+          "id": "kyinH70Wv68YX5xR",
+          "name": "Telegram account"
+        }
+      },
+      "notes": "Credential: Telegram API -- Bot Token from @BotFather (see setup steps below)."
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $input.first().json.message;\nreturn [{\n  json: {\n    chatId: msg.chat.id,\n    from: String(msg.chat.id),\n    message: msg.text || '',\n    profileName: msg.from.first_name || ''\n  }\n}];"
+      },
+      "id": "384abb0d-c521-4b26-8072-c7dbc69c323e",
+      "name": "2. Extract Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1328,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$json.crmBaseUrl}}/crm/v3/objects/contacts/search",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "hubspotApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"filterGroups\": [ { \"filters\": [ { \"propertyName\": \"telegram_id\", \"operator\": \"EQ\", \"value\": $json.from } ] } ] } }}",
+        "options": {}
+      },
+      "id": "f6d2481b-465a-4d78-baf6-357d3daa17cf",
+      "name": "3. CRM Lookup (HubSpot)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1104,
+        112
+      ],
+      "notes": "Optional -- skip/delete this node if you don't need CRM logging yet. Swap for Zoho/Salesforce as needed."
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "mode": "list",
+          "value": "RAG - Retrieve Context"
+        },
+        "workflowInputs": {
+          "value": {
+            "query": "={{$('2. Extract Message').first().json.message}}"
+          }
+        },
+        "options": {}
+      },
+      "id": "7c3cb82b-6c4d-4dbc-b44b-865c72d16c83",
+      "name": "4. Retrieve Context (RAG)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        -880,
+        112
+      ],
+      "notes": "Calls the 'RAG - Retrieve Context' workflow you already built. Select it from the dropdown once both are imported."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ {\n  \"model\": \"claude-haiku-4-5\",\n  \"max_tokens\": 300,\n  \"system\": \"You are the support assistant for [BUSINESS NAME] on Telegram. Answer only using the knowledge base context below. Keep replies to 2-3 sentences, plain conversational tone. If the question involves pricing negotiation, complaints, refunds, or anything you are not confident about, end your reply with the exact tag [ESCALATE] on its own line.\\n\\nKNOWLEDGE BASE CONTEXT:\\n\" + $json.retrievedContext,\n  \"messages\": [\n    { \"role\": \"user\", \"content\": $('2. Extract Message').first().json.message }\n  ]\n} }}",
+        "options": {}
+      },
+      "id": "977ef748-617a-4aaf-83d5-52ff81ca92db",
+      "name": "5. Call Claude API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -656,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const resp = $input.first().json;\nconst text = resp.content?.[0]?.text || '';\nconst escalate = text.includes('[ESCALATE]');\nconst clean = text.replace('[ESCALATE]', '').trim();\n\nreturn [{\n  json: {\n    chatId: $('2. Extract Message').first().json.chatId,\n    from: $('2. Extract Message').first().json.from,\n    message: $('2. Extract Message').first().json.message,\n    reply: clean,\n    escalate\n  }\n}];"
+      },
+      "id": "2e8ceae2-0336-4a79-9960-229b09bd7d42",
+      "name": "6. Parse Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{$json.escalate}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "acd67906-0f2a-4bc9-9de2-4f493bac42d3",
+      "name": "7. Needs Human?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        112
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.chatId}}",
+        "text": "={{$json.reply}}",
+        "additionalFields": {}
+      },
+      "id": "6c529160-8f5c-43db-b33a-91b6eca6802d",
+      "name": "8a. Send Telegram Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "928a18ab-32ea-4750-b9e4-03a37e66469c",
+      "credentials": {
+        "telegramApi": {
+          "id": "kyinH70Wv68YX5xR",
+          "name": "Telegram account"
+        }
+      },
+      "notes": "Same Telegram API credential as the trigger node."
+    },
+    {
+      "parameters": {
+        "chatId": "={{$json.chatId}}",
+        "text": "Thanks for your message -- a member of our team will follow up shortly.",
+        "additionalFields": {}
+      },
+      "id": "9ff0acec-dde7-4f95-956b-8bb6ae2f97fd",
+      "name": "8b. Send Holding Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        208
+      ],
+      "webhookId": "a6b57396-a061-4752-aa82-4b5319a3e139"
+    },
+    {
+      "parameters": {
+        "select": "channel",
+        "channelId": {
+          "mode": "name",
+          "value": "support-escalations"
+        },
+        "text": "=Escalation needed\\nFrom: {{$json.from}}\\nMessage: {{$json.message}}",
+        "otherOptions": {}
+      },
+      "id": "7dcac2d5-c524-455b-94c0-7b439380b43b",
+      "name": "9. Alert Human (Slack)",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        208
+      ],
+      "webhookId": "92e02e78-6b62-44e4-8b4f-5c3f94645925"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "1. Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "2. Extract Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Extract Message": {
+      "main": [
+        [
+          {
+            "node": "3. CRM Lookup (HubSpot)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. CRM Lookup (HubSpot)": {
+      "main": [
+        [
+          {
+            "node": "4. Retrieve Context (RAG)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Retrieve Context (RAG)": {
+      "main": [
+        [
+          {
+            "node": "5. Call Claude API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "5. Call Claude API": {
+      "main": [
+        [
+          {
+            "node": "6. Parse Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "6. Parse Response": {
+      "main": [
+        [
+          {
+            "node": "7. Needs Human?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "7. Needs Human?": {
+      "main": [
+        [
+          {
+            "node": "8b. Send Holding Reply",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "9. Alert Human (Slack)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "8a. Send Telegram Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "fdd19364-6b38-45bd-b415-28bcb944fd07",
+  "meta": {
+    "instanceId": "692c0b022c7908a97e326711f62e9190df81bcf81752dbce786baf27ab90f860"
+  },
+  "id": "c7mz3eFwKxqJA6oR",
+  "tags": []
+}

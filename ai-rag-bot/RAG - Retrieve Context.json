@@ -1,0 +1,174 @@
+{
+  "name": "RAG - Retrieve Context",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "How do I track my order?"
+            }
+          ]
+        }
+      },
+      "id": "0e6a8a37-be93-4f2b-a4fa-0e7f175ac0c1",
+      "name": "1. Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "This makes the workflow callable from the WhatsApp bot via an 'Execute Sub-workflow' node, passing the customer's message as 'query'."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.voyageai.com/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"input\": [$json.query], \"model\": \"voyage-4-lite\", \"input_type\": \"query\" } }}",
+        "options": {}
+      },
+      "id": "243eddc9-07e2-4454-8763-d6aa2987f750",
+      "name": "2. Embed Query (Voyage AI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        432,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6jshI0Tja0FvIfyy",
+          "name": "Voyage Auth"
+        }
+      },
+      "notes": "Same HTTP Header Auth credential as the ingest workflow. input_type is 'query' here vs 'document' during ingest -- this matters for retrieval quality."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://rinmmewbdddxxauqykcq.supabase.co/rest/v1/rpc/match_documents",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"query_embedding\": $json.data[0].embedding, \"match_count\": 4 } }}",
+        "options": {}
+      },
+      "id": "1854de60-eafd-4088-9a13-2b1a8e839a15",
+      "name": "3. Similarity Search (Supabase)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        656,
+        0
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "IburtA1p2uVgIr3l",
+          "name": "Supabase account"
+        }
+      },
+      "notes": "Calls the match_documents() SQL function created in supabase-setup.sql. Same Supabase credential as ingest."
+    },
+    {
+      "parameters": {
+        "jsCode": "const matches = $input.first().json;\nconst contextText = matches.map(m => `[${m.metadata.source}] ${m.content}`).join('\\n\\n---\\n\\n');\n\nreturn [{ json: { retrievedContext: contextText } }];"
+      },
+      "id": "a6adc543-dc94-45ed-b74e-3695477c202e",
+      "name": "4. Format Retrieved Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "e27f3f5d-f9be-4d39-ab6e-0d2b8b6147bd",
+              "name": "query",
+              "value": "How do I track my order?",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        208,
+        0
+      ],
+      "id": "454471c8-9bf2-4526-9731-5a6c89d2bc0b",
+      "name": "Edit Fields"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "1. Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Embed Query (Voyage AI)": {
+      "main": [
+        [
+          {
+            "node": "3. Similarity Search (Supabase)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Similarity Search (Supabase)": {
+      "main": [
+        [
+          {
+            "node": "4. Format Retrieved Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "2. Embed Query (Voyage AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "d06eea0a-4d2a-422c-9d5a-10d97fd73353",
+  "meta": {
+    "instanceId": "692c0b022c7908a97e326711f62e9190df81bcf81752dbce786baf27ab90f860"
+  },
+  "id": "ACsnyRdslp0G6H95",
+  "tags": []
+}

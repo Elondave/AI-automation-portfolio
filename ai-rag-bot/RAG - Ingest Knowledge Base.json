@@ -1,0 +1,181 @@
+{
+  "name": "RAG - Ingest Knowledge Base",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Add / Update Knowledge Base Content",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Source Name (e.g. Solar Pricing Sheet)"
+            },
+            {
+              "fieldLabel": "Content",
+              "fieldType": "textarea"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "21f0e7c1-a10e-458c-881d-9df7081fbc19",
+      "name": "1. Manual Content Input (Form)",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        -224,
+        -224
+      ],
+      "webhookId": "f895e4e6-6381-481c-98c7-851ad5cec201",
+      "notes": "Swap for a Google Drive Trigger node if you want new files to auto-ingest instead of pasting text manually."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Chunk long text into ~700-token pieces with 100-token overlap.\n// Rough approximation: 1 token ~= 4 characters.\nconst CHUNK_CHARS = 2800;\nconst OVERLAP_CHARS = 400;\n\nconst source = $input.first().json['Source Name (e.g. Solar Pricing Sheet)'];\nconst text = $input.first().json['Content'];\n\nconst chunks = [];\nlet start = 0;\nwhile (start < text.length) {\n  const end = Math.min(start + CHUNK_CHARS, text.length);\n  chunks.push(text.slice(start, end).trim());\n  start += CHUNK_CHARS - OVERLAP_CHARS;\n}\n\nreturn chunks.filter(c => c.length > 0).map((chunk, i) => ({\n  json: { source, chunkIndex: i, content: chunk }\n}));"
+      },
+      "id": "59698e21-afcb-4193-a953-5aa6df061912",
+      "name": "2. Chunk Text",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        16,
+        -224
+      ],
+      "notes": "Outputs one item per chunk -- n8n will loop the rest of the workflow per chunk automatically."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.voyageai.com/v1/embeddings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"input\": [$json.content], \"model\": \"voyage-4-lite\", \"input_type\": \"document\" } }}",
+        "options": {}
+      },
+      "id": "9b29e390-4fba-4c0f-b486-c06fd2490a7f",
+      "name": "3. Embed Chunk (Voyage AI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        224,
+        -224
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "6jshI0Tja0FvIfyy",
+          "name": "Voyage Auth"
+        }
+      },
+      "notes": "Credential: HTTP Header Auth -- header name 'Authorization', value 'Bearer YOUR_VOYAGE_API_KEY'."
+    },
+    {
+      "parameters": {
+        "jsCode": "const embedResp = $input.first().json;\nconst chunkData = $('2. Chunk Text').first().json;\n\nreturn [{\n  json: {\n    content: chunkData.content,\n    embedding: embedResp.data[0].embedding,\n    metadata: { source: chunkData.source, chunkIndex: chunkData.chunkIndex }\n  }\n}];"
+      },
+      "id": "cd9dd980-5351-4817-9644-d5029c287589",
+      "name": "4. Format for Supabase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -224
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://rinmmewbdddxxauqykcq.supabase.co/rest/v1/documents",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "supabaseApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Prefer",
+              "value": "return=minimal"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"content\": $json.content, \"embedding\": $json.embedding, \"metadata\": $json.metadata } }}",
+        "options": {}
+      },
+      "id": "fd973975-d258-4322-8b82-4608628e5937",
+      "name": "5. Insert into Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        -224
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "IburtA1p2uVgIr3l",
+          "name": "Supabase account"
+        }
+      },
+      "notes": "Credential: Supabase API (Project URL + service_role key, from Supabase project Settings > API)."
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "1. Manual Content Input (Form)": {
+      "main": [
+        [
+          {
+            "node": "2. Chunk Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2. Chunk Text": {
+      "main": [
+        [
+          {
+            "node": "3. Embed Chunk (Voyage AI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "3. Embed Chunk (Voyage AI)": {
+      "main": [
+        [
+          {
+            "node": "4. Format for Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "4. Format for Supabase": {
+      "main": [
+        [
+          {
+            "node": "5. Insert into Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "f2fe1449-5820-4464-8b0a-726131712044",
+  "meta": {
+    "instanceId": "692c0b022c7908a97e326711f62e9190df81bcf81752dbce786baf27ab90f860"
+  },
+  "id": "zvWOP4LfwpqpMvBr",
+  "tags": []
+}
