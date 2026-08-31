@@ -1,4 +1,4 @@
-# AI Support Assistant with RAG (Telegram + n8n + Claude + Supabase)
+# # RETRIEVAL AUGMENTED GENERATION - AI Support Bot
 
 **Stack:** n8n · Claude API · Voyage AI · Supabase (pgvector) · Telegram
 
